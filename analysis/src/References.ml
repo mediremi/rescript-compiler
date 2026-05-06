@@ -16,6 +16,56 @@ let checkPos (line, char)
 let locItemsForPos ~extra pos =
   extra.locItems |> List.filter (fun {loc; locType = _} -> checkPos pos loc)
 
+(* The JSX PPX expansion introduces synthetic references that span the
+   surrounding expression rather than a real identifier in the source:
+   - `(<expr> : Jsx.element)` is added around every @react.component body, so
+     the type constructor `Jsx.element` ends up at the expression's location.
+   - Multi-children JSX wraps the children list with `React.array(...)` whose
+     ident location spans the full children range.
+   When the cursor lands inside the synthetic range but outside any narrower
+   real identifier, jump-to-definition would otherwise resolve to
+   `React.element` or `React.array`. Detect that case so callers can fall back
+   to nothing instead. *)
+let isSyntheticJsxRef {loc; locType} =
+  match locType with
+  | Typed (name, _, GlobalReference (_, [pathLast], _))
+    when name = pathLast
+         &&
+         match name with
+         | "element" | "array" | "jsx" | "jsxs" | "jsxKeyed" | "jsxsKeyed"
+         | "jsxFragment" ->
+           true
+         | _ -> false ->
+    let idLength = String.length name in
+    let reportedLength =
+      loc.Location.loc_end.pos_cnum - loc.loc_start.pos_cnum
+    in
+    reportedLength <> idLength
+  | _ -> false
+
+(* When the cursor only matches a PPX-synthesized JSX reference, look inside
+   that range for a unique real component identifier (`Typed("make", ...)`)
+   and return it. Falls back to None when there are zero or multiple
+   candidates (e.g. cursor between siblings of a multi-child element). *)
+let fallbackInsideSyntheticJsx ~extra (outer : Location.t) =
+  let inside (li : locItem) =
+    li.loc.loc_start.pos_cnum >= outer.loc_start.pos_cnum
+    && li.loc.loc_end.pos_cnum <= outer.loc_end.pos_cnum
+  in
+  let isComponentMake li =
+    match li.locType with
+    | Typed ("make", _, (LocalReference _ | GlobalReference _)) -> true
+    | _ -> false
+  in
+  let candidates =
+    extra.locItems
+    |> List.filter (fun li ->
+           (not (isSyntheticJsxRef li)) && inside li && isComponentMake li)
+  in
+  match candidates with
+  | [li] -> Some li
+  | _ -> None
+
 let lineColToCmtLoc ~pos:(line, col) = (line + 1, col)
 
 let getLocItem ~full ~pos ~debug =
@@ -108,6 +158,12 @@ let getLocItem ~full ~pos ~debug =
   | {locType = Typed (_, {desc = Tconstr (path, _, _)}, _)} :: li :: _
     when Utils.isUncurriedInternal path ->
     Some li
+  | li :: _ when isSyntheticJsxRef li ->
+    log 10
+      "first match is a JSX PPX-synthesized ref (React.element/array/...); \
+       try to fall back to a unique component ident inside the synthetic \
+       range";
+    fallbackInsideSyntheticJsx ~extra:full.extra li.loc
   | li :: _ -> Some li
   | _ -> None
 

@@ -1,9 +1,11 @@
 Definition src/JumpToDefinitionJsx.res 18:2
-{"uri": "React.res", "range": {"start": {"line": 0, "character": 5}, "end": {"line": 0, "character": 12}}}
+getLocItem #10: first match is a JSX PPX-synthesized ref (React.element/array/...); try to fall back to a unique component ident inside the synthetic range
+{"uri": "JumpToDefinitionJsx.res", "range": {"start": {"line": 2, "character": 6}, "end": {"line": 2, "character": 10}}}
 
 Definition src/JumpToDefinitionJsx.res 23:10
 {"uri": "JumpToDefinitionJsx.res", "range": {"start": {"line": 2, "character": 6}, "end": {"line": 2, "character": 10}}}
 
 Definition src/JumpToDefinitionJsx.res 33:4
-{"uri": "React.res", "range": {"start": {"line": 9, "character": 9}, "end": {"line": 9, "character": 14}}}
+getLocItem #10: first match is a JSX PPX-synthesized ref (React.element/array/...); try to fall back to a unique component ident inside the synthetic range
+null
 
